@@ -16,28 +16,50 @@ export default function Home() {
 
   const handleGenerateCode = async (prompt: string) => {
     setIsGenerating(true)
+    console.log('🚀 Starting generation for prompt:', prompt)
+    
     try {
-      // Use Gemini AI for code generation
+      // Use Gemini AI for code generation with timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
+      
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ prompt, model: 'gemini' }),
+        signal: controller.signal
       })
 
+      clearTimeout(timeoutId)
+      console.log('📡 API Response status:', response.status)
+      console.log('📡 API Response headers:', Object.fromEntries(response.headers.entries()))
+      
       const result = await response.json()
+      console.log('📦 API Response data:', {
+        success: result.success,
+        contentLength: result.content?.length || 0,
+        model: result.model,
+        error: result.error
+      })
       
       if (result.success) {
+        console.log('✅ Generation successful, setting code:', result.content.substring(0, 100) + '...')
         setGeneratedCode(result.content)
         setCurrentView('editor')
         toast.success(`Website generated successfully using ${result.model}!`)
       } else {
+        console.error('❌ Generation failed:', result.error)
         throw new Error(result.error || 'Failed to generate website')
       }
-    } catch (error) {
-      console.error('Generation error:', error)
-      toast.error('Failed to generate website. Please try again.')
+    } catch (error: any) {
+      console.error('💥 Generation error:', error)
+      if (error.name === 'AbortError') {
+        toast.error('Request timed out. Please try again.')
+      } else {
+        toast.error('Failed to generate website. Please try again.')
+      }
     } finally {
       setIsGenerating(false)
     }

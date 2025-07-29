@@ -27,8 +27,16 @@ export async function POST(request: NextRequest) {
 
     // Generate website using Gemini
     const result = await generateWebsiteFromPrompt(prompt)
+    
+    console.log('🎯 API: Generation result:', {
+      success: result.success,
+      contentLength: result.content?.length || 0,
+      model: result.model,
+      error: result.error
+    })
 
     if (result.success) {
+      console.log('✅ API: Sending successful response')
       return NextResponse.json({
         success: true,
         content: result.content,
@@ -37,13 +45,14 @@ export async function POST(request: NextRequest) {
         cost: result.cost
       })
     } else {
+      console.log('❌ API: Sending error response:', result.error)
       return NextResponse.json(
         { success: false, error: result.error },
         { status: 500 }
       )
     }
   } catch (error) {
-    console.error('API Error:', error)
+    console.error('💥 API Error:', error)
     return NextResponse.json(
       { 
         success: false, 

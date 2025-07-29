@@ -64,6 +64,7 @@ class AIService {
       throw new Error('Gemini not initialized')
     }
 
+    console.log('🤖 Initializing Gemini model...')
     const model = this.gemini.getGenerativeModel({ 
       model: 'gemini-1.5-flash',
       generationConfig: {
@@ -74,10 +75,17 @@ class AIService {
 
     // Build enhanced prompt with context
     const enhancedPrompt = this.buildEnhancedPrompt(prompt, context)
+    console.log('📝 Enhanced prompt length:', enhancedPrompt.length)
 
+    console.log('🚀 Calling Gemini API...')
     const result = await model.generateContent(enhancedPrompt)
+    console.log('📡 Gemini response received')
+    
     const response = await result.response
+    console.log('📦 Processing response...')
+    
     const text = response.text()
+    console.log('✅ Text extracted, length:', text.length)
 
     return {
       success: true,
@@ -244,26 +252,41 @@ export const aiService = new AIService()
 // Helper functions
 export async function generateWebsiteFromPrompt(userPrompt: string): Promise<AIGenerationResponse> {
   try {
-    // Step 1: Business Analysis
-    const businessAnalysis = await aiService.generateBusinessAnalysis(userPrompt)
-    if (!businessAnalysis.success) {
-      return businessAnalysis
-    }
+    console.log('🎯 Starting direct website generation for:', userPrompt)
+    
+    // Direct website generation instead of 3-step process
+    const websitePrompt = `You are an expert web developer. Create a complete, modern website based on this description: "${userPrompt}"
 
-    // Step 2: Design Specifications
-    const designSpecs = await aiService.generateDesignSpecs(JSON.parse(businessAnalysis.content))
-    if (!designSpecs.success) {
-      return designSpecs
-    }
+IMPORTANT: Return ONLY the complete HTML code. Do not include any markdown formatting, code blocks, or explanations.
 
-    // Step 3: Generate Website Code
-    const websiteCode = await aiService.generateWebsiteCode(
-      JSON.parse(businessAnalysis.content),
-      JSON.parse(designSpecs.content)
-    )
+Generate a complete, production-ready website using:
+- HTML5 semantic elements
+- Tailwind CSS for styling (include CDN link)
+- Modern JavaScript for interactivity
+- Responsive design
+- SEO optimization
+- Accessibility features
 
-    return websiteCode
+Requirements:
+- Use Tailwind CSS CDN: <script src="https://cdn.tailwindcss.com"></script>
+- Make it responsive and mobile-friendly
+- Include proper SEO meta tags
+- Ensure accessibility compliance
+- Use modern, clean design principles
+- Include smooth animations and transitions
+
+Return ONLY the complete HTML code with embedded CSS and JavaScript. Make it beautiful and functional.`
+
+    const result = await aiService.generateCode({
+      prompt: websitePrompt,
+      model: 'gemini',
+      temperature: 0.7
+    })
+
+    console.log('✅ Website generation completed:', result.success)
+    return result
   } catch (error) {
+    console.error('💥 Error in generateWebsiteFromPrompt:', error)
     return {
       success: false,
       content: '',
