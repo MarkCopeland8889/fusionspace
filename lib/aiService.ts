@@ -1,20 +1,14 @@
 import { GoogleGenAI } from '@google/genai'
-import OpenAI from 'openai'
 import { z } from 'zod'
 
-// Initialize AI clients
+// Initialize AI client
 const googleAI = new GoogleGenAI({
   apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY!,
-})
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
 })
 
 // AI Models
 const GEMINI_PRO = 'gemini-1.5-pro'
 const GEMINI_FLASH = 'gemini-1.5-flash'
-const GPT_4 = 'gpt-4'
-const GPT_3_5_TURBO = 'gpt-3.5-turbo'
 
 // Validation schemas
 const ProjectGenerationSchema = z.object({
@@ -107,44 +101,6 @@ class AIService {
         error: error instanceof Error ? error.message : 'Unknown error',
       }
     }
-  }
-
-  private async generateWithOpenAI(
-    prompt: string,
-    model: string = GPT_4
-  ): Promise<AIResponse> {
-    try {
-      const completion = await openai.chat.completions.create({
-        model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
-        max_tokens: 4000,
-      })
-
-      const content = completion.choices[0]?.message?.content
-      const usage = completion.usage
-
-      return {
-        success: true,
-        data: content,
-        tokens: usage?.total_tokens || 0,
-        cost: this.calculateOpenAICost(usage?.total_tokens || 0, model),
-      }
-    } catch (error) {
-      console.error('OpenAI API Error:', error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      }
-    }
-  }
-
-  private calculateOpenAICost(tokens: number, model: string): number {
-    const rates = {
-      [GPT_4]: 0.03, // $0.03 per 1K tokens
-      [GPT_3_5_TURBO]: 0.002, // $0.002 per 1K tokens
-    }
-    return (tokens / 1000) * (rates[model as keyof typeof rates] || 0.03)
   }
 
   // Project Generation
