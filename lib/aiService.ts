@@ -1,9 +1,9 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 
 export interface AIGenerationRequest {
   prompt: string
   context?: Record<string, any>
-  model?: 'gemini' | 'openai'
+  model?: 'gemini' | 'gemini-2.5-flash' | 'openai'
   temperature?: number
   maxTokens?: number
 }
@@ -18,13 +18,13 @@ export interface AIGenerationResponse {
 }
 
 class AIService {
-  private gemini: GoogleGenerativeAI | null = null
+  private gemini: GoogleGenAI | null = null
   private openai: any = null
 
   constructor() {
     // Initialize Gemini
     if (process.env.GOOGLE_AI_API_KEY) {
-      this.gemini = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY)
+      this.gemini = new GoogleGenAI({})
     }
 
     // Initialize OpenAI (fallback)
@@ -64,35 +64,30 @@ class AIService {
       throw new Error('Gemini not initialized')
     }
 
-    console.log('🤖 Initializing Gemini model...')
-    const model = this.gemini.getGenerativeModel({ 
-      model: 'gemini-1.5-flash',
-      generationConfig: {
-        temperature,
-        maxOutputTokens: 8192,
-      }
-    })
-
     // Build enhanced prompt with context
     const enhancedPrompt = this.buildEnhancedPrompt(prompt, context)
     console.log('📝 Enhanced prompt length:', enhancedPrompt.length)
 
     console.log('🚀 Calling Gemini API...')
-    const result = await model.generateContent(enhancedPrompt)
+    const result = await this.gemini.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: enhancedPrompt,
+      config: {
+        temperature,
+        maxOutputTokens: 8192,
+      }
+    })
     console.log('📡 Gemini response received')
     
-    const response = await result.response
-    console.log('📦 Processing response...')
-    
-    const text = response.text()
+    const text = result.text || ''
     console.log('✅ Text extracted, length:', text.length)
 
     return {
       success: true,
       content: text,
-      model: 'gemini-1.5-flash',
-      tokensUsed: response.usageMetadata?.totalTokenCount || 0,
-      cost: this.calculateGeminiCost(response.usageMetadata?.totalTokenCount || 0)
+      model: 'gemini-2.5-flash',
+      tokensUsed: 0, // New SDK doesn't provide usage metadata in the same way
+      cost: 0 // Will calculate based on text length
     }
   }
 
@@ -159,11 +154,13 @@ Return only the complete HTML code with embedded CSS and JavaScript.`
   }
 
   async generateBusinessAnalysis(prompt: string): Promise<AIGenerationResponse> {
-    const businessPrompt = `Analyze the following business description and provide a structured analysis:
+    const businessPrompt = `Analyze the following business description and provide a structured analysis.
 
 Business Description: ${prompt}
 
-Provide analysis in JSON format with these fields:
+CRITICAL: Return ONLY the JSON object below. Do not include any explanations, markdown formatting, code blocks, HTML, or any other content.
+
+Provide analysis in this exact JSON format:
 {
   "businessType": "string",
   "industry": "string", 
@@ -179,21 +176,23 @@ Provide analysis in JSON format with these fields:
   }
 }
 
-Return only valid JSON.`
+Return ONLY the JSON object above. Nothing else.`
 
     return this.generateCode({
       prompt: businessPrompt,
-      model: 'gemini',
+      model: 'gemini-2.5-flash',
       temperature: 0.3
     })
   }
 
   async generateDesignSpecs(businessAnalysis: any): Promise<AIGenerationResponse> {
-    const designPrompt = `Based on this business analysis, generate design specifications:
+    const designPrompt = `Based on this business analysis, generate design specifications.
 
-${JSON.stringify(businessAnalysis, null, 2)}
+Business Analysis: ${JSON.stringify(businessAnalysis, null, 2)}
 
-Generate design specs in JSON format:
+CRITICAL: Return ONLY the JSON object below. Do not include any explanations, markdown formatting, code blocks, HTML, or any other content.
+
+Generate design specs in this exact JSON format:
 {
   "colorScheme": {
     "primary": ["string"],
@@ -213,11 +212,11 @@ Generate design specs in JSON format:
   }
 }
 
-Return only valid JSON.`
+Return ONLY the JSON object above. Nothing else.`
 
     return this.generateCode({
       prompt: designPrompt,
-      model: 'gemini',
+      model: 'gemini-2.5-flash',
       temperature: 0.4
     })
   }
@@ -240,7 +239,7 @@ Return only the complete HTML code with embedded CSS and JavaScript.`
 
     return this.generateCode({
       prompt: codePrompt,
-      model: 'gemini',
+      model: 'gemini-2.5-flash',
       temperature: 0.7
     })
   }
@@ -252,10 +251,62 @@ export const aiService = new AIService()
 // Helper functions
 export async function generateWebsiteFromPrompt(userPrompt: string): Promise<AIGenerationResponse> {
   try {
-    console.log('🎯 Starting direct website generation for:', userPrompt)
+    console.log('🎯 Starting 3-step website generation for:', userPrompt)
     
-    // Direct website generation instead of 3-step process
-    const websitePrompt = `You are an expert web developer. Create a complete, modern website based on this description: "${userPrompt}"
+    // Step 1: Business Analysis
+    console.log('📊 Step 1: Business Analysis...')
+    const businessAnalysis = await aiService.generateBusinessAnalysis(userPrompt)
+    if (!businessAnalysis.success) {
+      console.error('❌ Business analysis failed, falling back to direct generation:', businessAnalysis.error)
+      return await generateDirectWebsite(userPrompt)
+    }
+    
+    // Extract JSON from markdown response
+    let businessData
+    try {
+      businessData = extractJsonFromMarkdown(businessAnalysis.content)
+      console.log('✅ Business analysis completed:', businessData.businessType)
+    } catch (error) {
+      console.error('❌ JSON parsing failed, falling back to direct generation:', error)
+      return await generateDirectWebsite(userPrompt)
+    }
+
+    // Step 2: Design Specifications
+    console.log('🎨 Step 2: Design Specifications...')
+    const designSpecs = await aiService.generateDesignSpecs(businessData)
+    if (!designSpecs.success) {
+      console.error('❌ Design specs failed, falling back to direct generation:', designSpecs.error)
+      return await generateDirectWebsite(userPrompt)
+    }
+    
+    // Extract JSON from markdown response
+    let designData
+    try {
+      designData = extractJsonFromMarkdown(designSpecs.content)
+      console.log('✅ Design specs completed:', designData.colorScheme?.primary)
+    } catch (error) {
+      console.error('❌ Design JSON parsing failed, falling back to direct generation:', error)
+      return await generateDirectWebsite(userPrompt)
+    }
+
+    // Step 3: Generate Website Code
+    console.log('💻 Step 3: Website Code Generation...')
+    const websiteCode = await aiService.generateWebsiteCode(businessData, designData)
+    console.log('✅ Website generation completed:', websiteCode.success)
+
+    return websiteCode
+  } catch (error) {
+    console.error('💥 Error in generateWebsiteFromPrompt:', error)
+    console.log('🔄 Falling back to direct generation...')
+    return await generateDirectWebsite(userPrompt)
+  }
+}
+
+// Fallback function for direct website generation
+async function generateDirectWebsite(userPrompt: string): Promise<AIGenerationResponse> {
+  console.log('🚀 Using direct website generation fallback...')
+  
+  const websitePrompt = `You are an expert web developer. Create a complete, modern website based on this description: "${userPrompt}"
 
 IMPORTANT: Return ONLY the complete HTML code. Do not include any markdown formatting, code blocks, or explanations.
 
@@ -277,21 +328,79 @@ Requirements:
 
 Return ONLY the complete HTML code with embedded CSS and JavaScript. Make it beautiful and functional.`
 
-    const result = await aiService.generateCode({
-      prompt: websitePrompt,
-      model: 'gemini',
-      temperature: 0.7
-    })
+  return await aiService.generateCode({
+    prompt: websitePrompt,
+    model: 'gemini-2.5-flash',
+    temperature: 0.7
+  })
+}
 
-    console.log('✅ Website generation completed:', result.success)
-    return result
-  } catch (error) {
-    console.error('💥 Error in generateWebsiteFromPrompt:', error)
-    return {
-      success: false,
-      content: '',
-      model: 'gemini',
-      error: error instanceof Error ? error.message : 'Unknown error'
+// Helper function to extract JSON from markdown code blocks
+function extractJsonFromMarkdown(content: string): any {
+  try {
+    console.log('🔍 Extracting JSON from:', content.substring(0, 200) + '...')
+    
+    // Remove markdown code blocks if present
+    let jsonString = content.trim()
+    
+    // Remove ```json and ``` markers
+    if (jsonString.startsWith('```json')) {
+      jsonString = jsonString.replace(/^```json\s*/, '')
     }
+    if (jsonString.startsWith('```')) {
+      jsonString = jsonString.replace(/^```\s*/, '')
+    }
+    if (jsonString.endsWith('```')) {
+      jsonString = jsonString.replace(/\s*```$/, '')
+    }
+    
+    // Find the first { and look for the matching closing }
+    const firstBrace = jsonString.indexOf('{')
+    if (firstBrace === -1) {
+      throw new Error('No JSON object found in response')
+    }
+    
+    let braceCount = 0
+    let endBrace = -1
+    
+    for (let i = firstBrace; i < jsonString.length; i++) {
+      if (jsonString[i] === '{') {
+        braceCount++
+      } else if (jsonString[i] === '}') {
+        braceCount--
+        if (braceCount === 0) {
+          endBrace = i
+          break
+        }
+      }
+    }
+    
+    if (endBrace === -1) {
+      throw new Error('Unmatched braces in JSON')
+    }
+    
+    // Extract only the JSON part
+    jsonString = jsonString.substring(firstBrace, endBrace + 1)
+    
+    console.log('📝 Extracted JSON string:', jsonString.substring(0, 200) + '...')
+    
+    // Parse the JSON
+    return JSON.parse(jsonString.trim())
+  } catch (error) {
+    console.error('❌ Failed to parse JSON from markdown:', error)
+    console.log('📝 Raw content:', content)
+    
+    // Try to find and extract just the JSON part with regex
+    try {
+      const jsonMatch = content.match(/\{[\s\S]*?\}/)
+      if (jsonMatch) {
+        console.log('🔄 Trying to extract JSON with regex...')
+        return JSON.parse(jsonMatch[0])
+      }
+    } catch (regexError) {
+      console.error('❌ Regex extraction also failed:', regexError)
+    }
+    
+    throw new Error(`Failed to parse JSON response: ${error}`)
   }
 } 

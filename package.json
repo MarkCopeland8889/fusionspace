@@ -1,7 +1,7 @@
 {
-  "name": "ai-website-builder",
+  "name": "fusionspace",
   "version": "1.0.0",
-  "description": "AI-powered website and app builder with business tools",
+  "description": "AI-powered builder for modern web apps, dashboards, landing pages, and business websites",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -11,8 +11,11 @@
     "setup": "node setup.js"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
+    "@clerk/nextjs": "^4.29.1",
+    "@google/genai": "^1.11.0",
     "@monaco-editor/react": "^4.6.0",
+    "@supabase/supabase-js": "^2.38.4",
+    "@tailwindcss/postcss": "^4.1.0",
     "autoprefixer": "^10.4.16",
     "framer-motion": "^10.16.4",
     "lucide-react": "^0.292.0",
@@ -24,7 +27,7 @@
     "react-hot-toast": "^2.4.1",
     "react-split": "^2.0.14",
     "tailwindcss": "^4.1.0",
-    "@tailwindcss/postcss": "^4.1.0"
+    "zustand": "^4.4.7"
   },
   "devDependencies": {
     "@types/node": "^20.19.9",
@@ -35,4 +38,3 @@
     "typescript": "^5.2.0"
   }
 }
- 

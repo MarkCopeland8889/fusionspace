@@ -1,197 +1,192 @@
 'use client'
 
 import { useState } from 'react'
-import { motion } from 'framer-motion'
-import { Sparkles, Code, Eye, Settings, Rocket, MessageSquare } from 'lucide-react'
-import PromptInput from '@/components/PromptInput'
-import CodeEditor from '@/components/CodeEditor'
-import LivePreview from '@/components/LivePreview'
-import BusinessTools from '@/components/BusinessTools'
-import toast from 'react-hot-toast'
+import { useUser } from '@clerk/nextjs'
+import Link from 'next/link'
+import { ArrowRight, Sparkles, Zap, Users, Shield, Globe, Code, Rocket } from 'lucide-react'
+import Header from '@/components/landing/Header'
+import Footer from '@/components/landing/Footer'
 
-export default function Home() {
-  const [currentView, setCurrentView] = useState<'prompt' | 'editor' | 'preview' | 'business'>('prompt')
-  const [generatedCode, setGeneratedCode] = useState('')
-  const [isGenerating, setIsGenerating] = useState(false)
+export default function LandingPage() {
+  const { user, isSignedIn } = useUser()
+  const [prompt, setPrompt] = useState('')
+  const [showSignupPrompt, setShowSignupPrompt] = useState(false)
 
-  const handleGenerateCode = async (prompt: string) => {
-    setIsGenerating(true)
-    console.log('🚀 Starting generation for prompt:', prompt)
-    
-    try {
-      // Use Gemini AI for code generation with timeout
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
-      
-      const response = await fetch('/api/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt, model: 'gemini' }),
-        signal: controller.signal
-      })
-
-      clearTimeout(timeoutId)
-      console.log('📡 API Response status:', response.status)
-      console.log('📡 API Response headers:', Object.fromEntries(response.headers.entries()))
-      
-      const result = await response.json()
-      console.log('📦 API Response data:', {
-        success: result.success,
-        contentLength: result.content?.length || 0,
-        model: result.model,
-        error: result.error
-      })
-      
-      if (result.success) {
-        console.log('✅ Generation successful, setting code:', result.content.substring(0, 100) + '...')
-        setGeneratedCode(result.content)
-        setCurrentView('editor')
-        toast.success(`Website generated successfully using ${result.model}!`)
-      } else {
-        console.error('❌ Generation failed:', result.error)
-        throw new Error(result.error || 'Failed to generate website')
-      }
-    } catch (error: any) {
-      console.error('💥 Generation error:', error)
-      if (error.name === 'AbortError') {
-        toast.error('Request timed out. Please try again.')
-      } else {
-        toast.error('Failed to generate website. Please try again.')
-      }
-    } finally {
-      setIsGenerating(false)
+  const handleTryPrompt = () => {
+    if (!isSignedIn) {
+      setShowSignupPrompt(true)
+    } else {
+      // Redirect to dashboard with the prompt
+      window.location.href = `/dashboard?prompt=${encodeURIComponent(prompt)}`
     }
   }
 
-  const generateSampleCode = (prompt: string) => {
-    // This is a simplified example - in production, this would call OpenAI API
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${prompt.includes('business') ? 'My Business' : 'My Website'}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-50">
-    <nav class="bg-white shadow-sm">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <h1 class="text-xl font-bold text-gray-900">${prompt.includes('business') ? 'My Business' : 'My Website'}</h1>
-                </div>
-                <div class="flex items-center space-x-4">
-                    <a href="#" class="text-gray-700 hover:text-gray-900">Home</a>
-                    <a href="#" class="text-gray-700 hover:text-gray-900">About</a>
-                    <a href="#" class="text-gray-700 hover:text-gray-900">Contact</a>
-                </div>
-            </div>
-        </div>
-    </nav>
-    
-    <main class="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
-        <div class="text-center">
-            <h2 class="text-4xl font-bold text-gray-900 mb-4">Welcome to ${prompt.includes('business') ? 'Our Business' : 'Our Website'}</h2>
-            <p class="text-xl text-gray-600 mb-8">${prompt}</p>
-            <button class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors">
-                Get Started
-            </button>
-        </div>
-    </main>
-</body>
-</html>`
-  }
-
-  const navigationItems = [
-    { id: 'prompt', label: 'AI Prompt', icon: Sparkles },
-    { id: 'editor', label: 'Code Editor', icon: Code },
-    { id: 'preview', label: 'Live Preview', icon: Eye },
-    { id: 'business', label: 'Business Tools', icon: Rocket },
+  const features = [
+    {
+      icon: <Sparkles className="w-6 h-6" />,
+      title: 'AI-Powered Generation',
+      description: 'Describe what you want and watch AI create your entire application instantly.'
+    },
+    {
+      icon: <Code className="w-6 h-6" />,
+      title: 'Real React/Next.js Code',
+      description: 'Get production-ready code that you can customize, export, or deploy immediately.'
+    },
+    {
+      icon: <Zap className="w-6 h-6" />,
+      title: 'Live Preview',
+      description: 'See your changes in real-time without waiting for deployment or setup.'
+    },
+    {
+      icon: <Users className="w-6 h-6" />,
+      title: 'Built for Developers',
+      description: 'Perfect for MVPs, admin panels, SaaS tools, or any custom application.'
+    },
+    {
+      icon: <Shield className="w-6 h-6" />,
+      title: 'Business Ready',
+      description: 'Clean, responsive sites with booking forms, product pages, and contact forms.'
+    },
+    {
+      icon: <Globe className="w-6 h-6" />,
+      title: 'Instant Deployment',
+      description: 'Deploy your projects with one click and get a live URL immediately.'
+    }
   ]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-white" />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      <Header />
+      
+      {/* Hero Section */}
+      <section className="relative px-4 py-20 mx-auto max-w-7xl sm:px-6 lg:px-8">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-6xl">
+            Build Modern Web Apps
+            <span className="block text-blue-600">Instantly with AI</span>
+          </h1>
+          <p className="max-w-2xl mx-auto mt-6 text-lg leading-8 text-gray-600">
+            FusionSpace helps you create stunning websites, dashboards, and applications without writing boilerplate code. 
+            Just describe what you want, and watch it come to life.
+          </p>
+          
+          {/* Try Out Section */}
+          <div className="max-w-xl mx-auto mt-10">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Describe your website or app..."
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onKeyPress={(e) => e.key === 'Enter' && handleTryPrompt()}
+              />
+              <button
+                onClick={handleTryPrompt}
+                className="px-6 py-3 text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+              >
+                Try It
+              </button>
+            </div>
+            
+            {showSignupPrompt && (
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-blue-800">
+                  Sign up to start building! Get access to our AI-powered builder and free sales & marketing training.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Link
+                    href="/sign-up"
+                    className="px-4 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors"
+                  >
+                    Sign Up Free
+                  </Link>
+                  <Link
+                    href="/sign-in"
+                    className="px-4 py-2 text-sm text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors"
+                  >
+                    Sign In
+                  </Link>
+                </div>
               </div>
-              <h1 className="text-xl font-bold text-gray-900">AI Website Builder</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button className="text-gray-600 hover:text-gray-900">
-                <MessageSquare className="w-5 h-5" />
-              </button>
-              <button className="text-gray-600 hover:text-gray-900">
-                <Settings className="w-5 h-5" />
-              </button>
-            </div>
+            )}
           </div>
         </div>
-      </header>
+      </section>
 
-      {/* Navigation */}
-      <nav className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8">
-            {navigationItems.map((item) => {
-              const Icon = item.icon
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setCurrentView(item.id as any)}
-                  className={`flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
-                    currentView === item.id
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{item.label}</span>
-                </button>
-              )
-            })}
+      {/* Features Section */}
+      <section className="px-4 py-20 mx-auto max-w-7xl sm:px-6 lg:px-8">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl font-bold text-gray-900 sm:text-4xl">
+            Everything you need to build and launch
+          </h2>
+          <p className="mt-4 text-lg text-gray-600">
+            Whether you're a developer or business owner, FusionSpace has you covered
+          </p>
+        </div>
+        
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+          {features.map((feature, index) => (
+            <div key={index} className="p-6 bg-white rounded-xl shadow-sm border border-gray-100">
+              <div className="flex items-center justify-center w-12 h-12 mb-4 text-blue-600 bg-blue-100 rounded-lg">
+                {feature.icon}
+              </div>
+              <h3 className="mb-2 text-lg font-semibold text-gray-900">{feature.title}</h3>
+              <p className="text-gray-600">{feature.description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Sales & Marketing Training Section */}
+      <section className="px-4 py-20 mx-auto max-w-7xl sm:px-6 lg:px-8 bg-white">
+        <div className="text-center">
+          <div className="flex items-center justify-center mb-4">
+            <Rocket className="w-8 h-8 text-green-600 mr-2" />
+            <h2 className="text-3xl font-bold text-gray-900">Free Sales & Marketing Training</h2>
+          </div>
+          <p className="max-w-2xl mx-auto text-lg text-gray-600 mb-8">
+            Get your first customers with our comprehensive roadmap. Learn proven strategies to market your product 
+            and build a successful business from the ground up.
+          </p>
+          <Link
+            href={isSignedIn ? '/dashboard/launch-business' : '/sign-up'}
+            className="inline-flex items-center px-6 py-3 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
+          >
+            Start Learning
+            <ArrowRight className="w-4 h-4 ml-2" />
+          </Link>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="px-4 py-20 mx-auto max-w-7xl sm:px-6 lg:px-8">
+        <div className="text-center">
+          <h2 className="text-3xl font-bold text-gray-900 sm:text-4xl">
+            Ready to build something amazing?
+          </h2>
+          <p className="mt-4 text-lg text-gray-600">
+            Join thousands of developers and business owners who are building faster with FusionSpace
+          </p>
+          <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:justify-center">
+            <Link
+              href="/sign-up"
+              className="inline-flex items-center justify-center px-8 py-3 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Start Building Free
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Link>
+            <Link
+              href="/pricing"
+              className="inline-flex items-center justify-center px-8 py-3 text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+            >
+              View Pricing
+            </Link>
           </div>
         </div>
-      </nav>
+      </section>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <motion.div
-          key={currentView}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          {currentView === 'prompt' && (
-            <PromptInput onGenerate={handleGenerateCode} isGenerating={isGenerating} />
-          )}
-          
-          {currentView === 'editor' && (
-            <CodeEditor 
-              code={generatedCode} 
-              onCodeChange={setGeneratedCode}
-              onViewPreview={() => setCurrentView('preview')}
-            />
-          )}
-          
-          {currentView === 'preview' && (
-            <LivePreview 
-              code={generatedCode}
-              onBackToEditor={() => setCurrentView('editor')}
-            />
-          )}
-          
-          {currentView === 'business' && (
-            <BusinessTools />
-          )}
-        </motion.div>
-      </main>
+      <Footer />
     </div>
   )
 } 

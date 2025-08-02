@@ -3,7 +3,7 @@ import { generateWebsiteFromPrompt } from '@/lib/aiService'
 
 export async function POST(request: NextRequest) {
   try {
-    const { prompt, model = 'gemini' } = await request.json()
+    const { prompt, model = 'gemini-2.5-flash' } = await request.json()
 
     if (!prompt) {
       return NextResponse.json(
@@ -64,10 +64,10 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({
-    message: 'AI Website Generator API',
-    version: '1.0.0',
-    defaultModel: 'gemini',
-    supportedModels: ['gemini', 'openai']
-  })
+      return NextResponse.json({
+      message: 'AI Website Generator API',
+      version: '1.0.0',
+      defaultModel: 'gemini-2.5-flash',
+      supportedModels: ['gemini-2.5-flash', 'gemini', 'openai']
+    })
 } 
