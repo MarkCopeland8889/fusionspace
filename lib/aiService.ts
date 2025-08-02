@@ -1,406 +1,379 @@
 import { GoogleGenAI } from '@google/genai'
+import OpenAI from 'openai'
+import { z } from 'zod'
 
-export interface AIGenerationRequest {
-  prompt: string
-  context?: Record<string, any>
-  model?: 'gemini' | 'gemini-2.5-flash' | 'openai'
-  temperature?: number
-  maxTokens?: number
+// Initialize AI clients
+const googleAI = new GoogleGenAI({
+  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY!,
+})
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
+
+// AI Models
+const GEMINI_PRO = 'gemini-1.5-pro'
+const GEMINI_FLASH = 'gemini-1.5-flash'
+const GPT_4 = 'gpt-4'
+const GPT_3_5_TURBO = 'gpt-3.5-turbo'
+
+// Validation schemas
+const ProjectGenerationSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: z.enum(['simple', 'advanced']),
+  prompt: z.string(),
+  files: z.array(z.string()),
+  template: z.string(),
+})
+
+const CodeGenerationSchema = z.object({
+  html: z.string(),
+  css: z.string(),
+  javascript: z.string().optional(),
+  metadata: z.object({
+    title: z.string(),
+    description: z.string(),
+    keywords: z.array(z.string()),
+  }),
+})
+
+export interface AIResponse {
+  success: boolean
+  data?: any
+  error?: string
+  tokens?: number
+  cost?: number
 }
 
-export interface AIGenerationResponse {
-  success: boolean
-  content: string
-  model: string
-  tokensUsed?: number
-  cost?: number
-  error?: string
+export interface ProjectGenerationRequest {
+  prompt: string
+  type: 'simple' | 'advanced'
+  files?: string[]
+  businessType?: string
+  targetAudience?: string
+}
+
+export interface CodeGenerationRequest {
+  prompt: string
+  projectType: 'simple' | 'advanced'
+  existingCode?: {
+    html?: string
+    css?: string
+    javascript?: string
+  }
+  requirements?: string[]
+}
+
+export interface LogoGenerationRequest {
+  businessName: string
+  businessType: string
+  style: 'minimal' | 'modern' | 'classic' | 'playful'
+  colors?: string[]
+}
+
+export interface ContentGenerationRequest {
+  type: 'hero' | 'about' | 'services' | 'contact' | 'testimonials'
+  businessType: string
+  tone: 'professional' | 'friendly' | 'casual' | 'luxury'
+  length: 'short' | 'medium' | 'long'
 }
 
 class AIService {
-  private gemini: GoogleGenAI | null = null
-  private openai: any = null
-
-  constructor() {
-    // Initialize Gemini
-    if (process.env.GOOGLE_AI_API_KEY) {
-      this.gemini = new GoogleGenAI({})
-    }
-
-    // Initialize OpenAI (fallback)
-    if (process.env.OPENAI_API_KEY) {
-      // OpenAI initialization would go here
-      this.openai = null // Placeholder
-    }
-  }
-
-  async generateCode(request: AIGenerationRequest): Promise<AIGenerationResponse> {
-    const { prompt, context = {}, model = 'gemini', temperature = 0.7 } = request
-
+  private async generateWithGemini(
+    prompt: string,
+    model: string = GEMINI_PRO
+  ): Promise<AIResponse> {
     try {
-      if (model === 'gemini' && this.gemini) {
-        return await this.generateWithGemini(prompt, context, temperature)
-      } else if (this.openai) {
-        return await this.generateWithOpenAI(prompt, context, temperature)
-      } else {
-        throw new Error('No AI service available')
+      const result = await googleAI.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          temperature: 0.7,
+          maxOutputTokens: 8192,
+        }
+      })
+      
+      const text = result.text || ''
+      
+      return {
+        success: true,
+        data: text,
+        tokens: 0, // New SDK doesn't provide usage metadata in the same way
       }
     } catch (error) {
+      console.error('Gemini API Error:', error)
       return {
         success: false,
-        content: '',
-        model,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Unknown error',
       }
-    }
-  }
-
-  private async generateWithGemini(
-    prompt: string, 
-    context: Record<string, any>, 
-    temperature: number
-  ): Promise<AIGenerationResponse> {
-    if (!this.gemini) {
-      throw new Error('Gemini not initialized')
-    }
-
-    // Build enhanced prompt with context
-    const enhancedPrompt = this.buildEnhancedPrompt(prompt, context)
-    console.log('📝 Enhanced prompt length:', enhancedPrompt.length)
-
-    console.log('🚀 Calling Gemini API...')
-    const result = await this.gemini.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: enhancedPrompt,
-      config: {
-        temperature,
-        maxOutputTokens: 8192,
-      }
-    })
-    console.log('📡 Gemini response received')
-    
-    const text = result.text || ''
-    console.log('✅ Text extracted, length:', text.length)
-
-    return {
-      success: true,
-      content: text,
-      model: 'gemini-2.5-flash',
-      tokensUsed: 0, // New SDK doesn't provide usage metadata in the same way
-      cost: 0 // Will calculate based on text length
     }
   }
 
   private async generateWithOpenAI(
-    prompt: string, 
-    context: Record<string, any>, 
-    temperature: number
-  ): Promise<AIGenerationResponse> {
-    // Fallback to OpenAI implementation
-    // This would use the OpenAI API
-    throw new Error('OpenAI integration not implemented yet')
+    prompt: string,
+    model: string = GPT_4
+  ): Promise<AIResponse> {
+    try {
+      const completion = await openai.chat.completions.create({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 4000,
+      })
+
+      const content = completion.choices[0]?.message?.content
+      const usage = completion.usage
+
+      return {
+        success: true,
+        data: content,
+        tokens: usage?.total_tokens || 0,
+        cost: this.calculateOpenAICost(usage?.total_tokens || 0, model),
+      }
+    } catch (error) {
+      console.error('OpenAI API Error:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
   }
 
-  private buildEnhancedPrompt(prompt: string, context: Record<string, any>): string {
-    let enhancedPrompt = `You are an expert web developer and designer. Create professional, modern websites using HTML, CSS, and JavaScript.
+  private calculateOpenAICost(tokens: number, model: string): number {
+    const rates = {
+      [GPT_4]: 0.03, // $0.03 per 1K tokens
+      [GPT_3_5_TURBO]: 0.002, // $0.002 per 1K tokens
+    }
+    return (tokens / 1000) * (rates[model as keyof typeof rates] || 0.03)
+  }
+
+  // Project Generation
+  async generateProject(request: ProjectGenerationRequest): Promise<AIResponse> {
+    const prompt = `
+Generate a complete web project based on the following requirements:
+
+Business Type: ${request.businessType || 'General'}
+Target Audience: ${request.targetAudience || 'General users'}
+Project Type: ${request.type === 'simple' ? 'Static Website' : 'Full Stack Application'}
+User Prompt: ${request.prompt}
 
 Requirements:
-- Use Tailwind CSS for styling
-- Make it responsive and mobile-friendly
-- Include proper SEO meta tags
-- Ensure accessibility compliance
-- Use modern, clean design principles
-- Include smooth animations and transitions
+1. Create a modern, responsive design
+2. Use semantic HTML5
+3. Implement modern CSS with Tailwind classes
+4. Add interactive JavaScript functionality
+5. Ensure accessibility compliance
+6. Optimize for SEO
+7. Make it mobile-first responsive
 
-User Request: ${prompt}
+Please provide the complete project structure with:
+- HTML file with proper semantic structure
+- CSS file with Tailwind classes and custom styles
+- JavaScript file with modern ES6+ syntax
+- Meta tags for SEO
+- Structured data (JSON-LD)
+- Responsive design considerations
 
+Format the response as a JSON object with the following structure:
+{
+  "name": "Project Name",
+  "description": "Project Description",
+  "files": {
+    "index.html": "Complete HTML content",
+    "styles.css": "Complete CSS content",
+    "script.js": "Complete JavaScript content"
+  },
+  "metadata": {
+    "title": "Page Title",
+    "description": "Meta description",
+    "keywords": ["keyword1", "keyword2"],
+    "structuredData": "JSON-LD structured data"
+  }
+}
 `
 
-    // Add context-specific instructions
-    if (context.businessType) {
-      enhancedPrompt += `Business Type: ${context.businessType}\n`
-    }
-    if (context.targetAudience) {
-      enhancedPrompt += `Target Audience: ${context.targetAudience}\n`
-    }
-    if (context.colorScheme) {
-      enhancedPrompt += `Color Scheme: ${context.colorScheme}\n`
-    }
-    if (context.features) {
-      enhancedPrompt += `Required Features: ${context.features.join(', ')}\n`
-    }
-
-    enhancedPrompt += `
-
-Generate a complete, production-ready website. Include:
-1. Complete HTML structure with proper semantic elements
-2. Tailwind CSS classes for styling
-3. JavaScript for interactivity
-4. SEO meta tags
-5. Responsive design
-6. Modern animations
-
-Return only the complete HTML code with embedded CSS and JavaScript.`
-
-    return enhancedPrompt
+    return await this.generateWithGemini(prompt, GEMINI_PRO)
   }
 
-  private calculateGeminiCost(tokens: number): number {
-    // Gemini pricing: $0.000075 / 1K characters (input) + $0.0003 / 1K characters (output)
-    // Rough estimate: 1 token ≈ 4 characters
-    const inputCost = (tokens * 4 / 1000) * 0.000075
-    const outputCost = (tokens * 4 / 1000) * 0.0003
-    return inputCost + outputCost
-  }
+  // Code Generation
+  async generateCode(request: CodeGenerationRequest): Promise<AIResponse> {
+    const prompt = `
+Generate code based on the following requirements:
 
-  async generateBusinessAnalysis(prompt: string): Promise<AIGenerationResponse> {
-    const businessPrompt = `Analyze the following business description and provide a structured analysis.
+Prompt: ${request.prompt}
+Project Type: ${request.projectType === 'simple' ? 'Static Website' : 'Full Stack Application'}
 
-Business Description: ${prompt}
+${request.existingCode ? `
+Existing Code:
+HTML: ${request.existingCode.html || 'None'}
+CSS: ${request.existingCode.css || 'None'}
+JavaScript: ${request.existingCode.javascript || 'None'}
+` : ''}
 
-CRITICAL: Return ONLY the JSON object below. Do not include any explanations, markdown formatting, code blocks, HTML, or any other content.
+${request.requirements ? `Additional Requirements: ${request.requirements.join(', ')}` : ''}
 
-Provide analysis in this exact JSON format:
+Please generate:
+1. Semantic HTML5 structure
+2. Modern CSS with Tailwind classes
+3. Interactive JavaScript (ES6+)
+4. Ensure accessibility and SEO optimization
+5. Mobile-responsive design
+
+Format as JSON:
 {
-  "businessType": "string",
-  "industry": "string", 
-  "targetAudience": "string",
-  "keyServices": ["string"],
-  "valueProposition": "string",
-  "competitiveAdvantages": ["string"],
-  "websiteRequirements": {
-    "essentialPages": ["string"],
-    "keyFeatures": ["string"],
-    "designStyle": "string",
-    "contentSections": ["string"]
+  "html": "Complete HTML content",
+  "css": "Complete CSS content", 
+  "javascript": "Complete JavaScript content",
+  "metadata": {
+    "title": "Page title",
+    "description": "Meta description",
+    "keywords": ["keyword1", "keyword2"]
   }
 }
+`
 
-Return ONLY the JSON object above. Nothing else.`
-
-    return this.generateCode({
-      prompt: businessPrompt,
-      model: 'gemini-2.5-flash',
-      temperature: 0.3
-    })
+    return await this.generateWithGemini(prompt, GEMINI_FLASH)
   }
 
-  async generateDesignSpecs(businessAnalysis: any): Promise<AIGenerationResponse> {
-    const designPrompt = `Based on this business analysis, generate design specifications.
+  // Logo Generation
+  async generateLogo(request: LogoGenerationRequest): Promise<AIResponse> {
+    const prompt = `
+Generate a logo concept for:
 
-Business Analysis: ${JSON.stringify(businessAnalysis, null, 2)}
+Business Name: ${request.businessName}
+Business Type: ${request.businessType}
+Style: ${request.style}
+Colors: ${request.colors?.join(', ') || 'Brand appropriate'}
 
-CRITICAL: Return ONLY the JSON object below. Do not include any explanations, markdown formatting, code blocks, HTML, or any other content.
+Please provide:
+1. Logo concept description
+2. Color palette recommendations
+3. Typography suggestions
+4. Design principles
+5. Scalability considerations
 
-Generate design specs in this exact JSON format:
+Format as JSON:
 {
-  "colorScheme": {
-    "primary": ["string"],
-    "secondary": ["string"],
-    "accent": ["string"],
-    "neutral": ["string"]
-  },
-  "typography": {
-    "heading": "string",
-    "body": "string",
-    "accent": "string"
-  },
-  "layout": {
-    "style": "string",
-    "sections": ["string"],
-    "animations": ["string"]
-  }
+  "concept": "Logo concept description",
+  "colors": ["#color1", "#color2", "#color3"],
+  "typography": "Font recommendations",
+  "principles": ["principle1", "principle2"],
+  "scalability": "Scalability notes"
 }
+`
 
-Return ONLY the JSON object above. Nothing else.`
-
-    return this.generateCode({
-      prompt: designPrompt,
-      model: 'gemini-2.5-flash',
-      temperature: 0.4
-    })
+    return await this.generateWithGemini(prompt, GEMINI_FLASH)
   }
 
-  async generateWebsiteCode(businessAnalysis: any, designSpecs: any): Promise<AIGenerationResponse> {
-    const codePrompt = `Create a complete website based on:
+  // Content Generation
+  async generateContent(request: ContentGenerationRequest): Promise<AIResponse> {
+    const prompt = `
+Generate ${request.type} content for a ${request.businessType} business.
 
-Business Analysis: ${JSON.stringify(businessAnalysis, null, 2)}
-Design Specifications: ${JSON.stringify(designSpecs, null, 2)}
-
-Generate a complete, production-ready website using:
-- HTML5 semantic elements
-- Tailwind CSS for styling
-- Modern JavaScript for interactivity
-- Responsive design
-- SEO optimization
-- Accessibility features
-
-Return only the complete HTML code with embedded CSS and JavaScript.`
-
-    return this.generateCode({
-      prompt: codePrompt,
-      model: 'gemini-2.5-flash',
-      temperature: 0.7
-    })
-  }
-}
-
-// Export singleton instance
-export const aiService = new AIService()
-
-// Helper functions
-export async function generateWebsiteFromPrompt(userPrompt: string): Promise<AIGenerationResponse> {
-  try {
-    console.log('🎯 Starting 3-step website generation for:', userPrompt)
-    
-    // Step 1: Business Analysis
-    console.log('📊 Step 1: Business Analysis...')
-    const businessAnalysis = await aiService.generateBusinessAnalysis(userPrompt)
-    if (!businessAnalysis.success) {
-      console.error('❌ Business analysis failed, falling back to direct generation:', businessAnalysis.error)
-      return await generateDirectWebsite(userPrompt)
-    }
-    
-    // Extract JSON from markdown response
-    let businessData
-    try {
-      businessData = extractJsonFromMarkdown(businessAnalysis.content)
-      console.log('✅ Business analysis completed:', businessData.businessType)
-    } catch (error) {
-      console.error('❌ JSON parsing failed, falling back to direct generation:', error)
-      return await generateDirectWebsite(userPrompt)
-    }
-
-    // Step 2: Design Specifications
-    console.log('🎨 Step 2: Design Specifications...')
-    const designSpecs = await aiService.generateDesignSpecs(businessData)
-    if (!designSpecs.success) {
-      console.error('❌ Design specs failed, falling back to direct generation:', designSpecs.error)
-      return await generateDirectWebsite(userPrompt)
-    }
-    
-    // Extract JSON from markdown response
-    let designData
-    try {
-      designData = extractJsonFromMarkdown(designSpecs.content)
-      console.log('✅ Design specs completed:', designData.colorScheme?.primary)
-    } catch (error) {
-      console.error('❌ Design JSON parsing failed, falling back to direct generation:', error)
-      return await generateDirectWebsite(userPrompt)
-    }
-
-    // Step 3: Generate Website Code
-    console.log('💻 Step 3: Website Code Generation...')
-    const websiteCode = await aiService.generateWebsiteCode(businessData, designData)
-    console.log('✅ Website generation completed:', websiteCode.success)
-
-    return websiteCode
-  } catch (error) {
-    console.error('💥 Error in generateWebsiteFromPrompt:', error)
-    console.log('🔄 Falling back to direct generation...')
-    return await generateDirectWebsite(userPrompt)
-  }
-}
-
-// Fallback function for direct website generation
-async function generateDirectWebsite(userPrompt: string): Promise<AIGenerationResponse> {
-  console.log('🚀 Using direct website generation fallback...')
-  
-  const websitePrompt = `You are an expert web developer. Create a complete, modern website based on this description: "${userPrompt}"
-
-IMPORTANT: Return ONLY the complete HTML code. Do not include any markdown formatting, code blocks, or explanations.
-
-Generate a complete, production-ready website using:
-- HTML5 semantic elements
-- Tailwind CSS for styling (include CDN link)
-- Modern JavaScript for interactivity
-- Responsive design
-- SEO optimization
-- Accessibility features
+Tone: ${request.tone}
+Length: ${request.length}
 
 Requirements:
-- Use Tailwind CSS CDN: <script src="https://cdn.tailwindcss.com"></script>
-- Make it responsive and mobile-friendly
-- Include proper SEO meta tags
-- Ensure accessibility compliance
-- Use modern, clean design principles
-- Include smooth animations and transitions
+- Engaging and conversion-focused
+- SEO-optimized
+- Professional yet approachable
+- Include relevant keywords naturally
+- Call-to-action elements
 
-Return ONLY the complete HTML code with embedded CSS and JavaScript. Make it beautiful and functional.`
+Please provide the content in a structured format.
+`
 
-  return await aiService.generateCode({
-    prompt: websitePrompt,
-    model: 'gemini-2.5-flash',
-    temperature: 0.7
-  })
+    return await this.generateWithGemini(prompt, GEMINI_FLASH)
+  }
+
+  // Code Review and Optimization
+  async reviewCode(code: string, language: 'html' | 'css' | 'javascript'): Promise<AIResponse> {
+    const prompt = `
+Review and optimize the following ${language.toUpperCase()} code:
+
+${code}
+
+Please provide:
+1. Code quality assessment
+2. Performance optimizations
+3. Security considerations
+4. Accessibility improvements
+5. Best practices recommendations
+6. Optimized version of the code
+
+Format as JSON:
+{
+  "assessment": "Quality assessment",
+  "optimizations": ["optimization1", "optimization2"],
+  "security": ["security1", "security2"],
+  "accessibility": ["accessibility1", "accessibility2"],
+  "bestPractices": ["practice1", "practice2"],
+  "optimizedCode": "Optimized code version"
+}
+`
+
+    return await this.generateWithGemini(prompt, GEMINI_PRO)
+  }
+
+  // Bug Fixing
+  async fixBugs(code: string, error: string, language: 'html' | 'css' | 'javascript'): Promise<AIResponse> {
+    const prompt = `
+Fix the following ${language.toUpperCase()} code that has this error:
+
+Error: ${error}
+
+Code:
+${code}
+
+Please provide:
+1. Root cause analysis
+2. Fixed code
+3. Explanation of the fix
+4. Prevention tips
+
+Format as JSON:
+{
+  "rootCause": "Root cause analysis",
+  "fixedCode": "Fixed code version",
+  "explanation": "Explanation of the fix",
+  "prevention": ["tip1", "tip2"]
+}
+`
+
+    return await this.generateWithGemini(prompt, GEMINI_FLASH)
+  }
+
+  // SEO Optimization
+  async optimizeSEO(content: string, businessType: string): Promise<AIResponse> {
+    const prompt = `
+Optimize the following content for SEO:
+
+Content: ${content}
+Business Type: ${businessType}
+
+Please provide:
+1. SEO analysis
+2. Keyword recommendations
+3. Meta tag suggestions
+4. Content improvements
+5. Structured data recommendations
+
+Format as JSON:
+{
+  "analysis": "SEO analysis",
+  "keywords": ["keyword1", "keyword2"],
+  "metaTags": {
+    "title": "Optimized title",
+    "description": "Optimized description"
+  },
+  "improvements": ["improvement1", "improvement2"],
+  "structuredData": "JSON-LD structured data"
+}
+`
+
+    return await this.generateWithGemini(prompt, GEMINI_FLASH)
+  }
 }
 
-// Helper function to extract JSON from markdown code blocks
-function extractJsonFromMarkdown(content: string): any {
-  try {
-    console.log('🔍 Extracting JSON from:', content.substring(0, 200) + '...')
-    
-    // Remove markdown code blocks if present
-    let jsonString = content.trim()
-    
-    // Remove ```json and ``` markers
-    if (jsonString.startsWith('```json')) {
-      jsonString = jsonString.replace(/^```json\s*/, '')
-    }
-    if (jsonString.startsWith('```')) {
-      jsonString = jsonString.replace(/^```\s*/, '')
-    }
-    if (jsonString.endsWith('```')) {
-      jsonString = jsonString.replace(/\s*```$/, '')
-    }
-    
-    // Find the first { and look for the matching closing }
-    const firstBrace = jsonString.indexOf('{')
-    if (firstBrace === -1) {
-      throw new Error('No JSON object found in response')
-    }
-    
-    let braceCount = 0
-    let endBrace = -1
-    
-    for (let i = firstBrace; i < jsonString.length; i++) {
-      if (jsonString[i] === '{') {
-        braceCount++
-      } else if (jsonString[i] === '}') {
-        braceCount--
-        if (braceCount === 0) {
-          endBrace = i
-          break
-        }
-      }
-    }
-    
-    if (endBrace === -1) {
-      throw new Error('Unmatched braces in JSON')
-    }
-    
-    // Extract only the JSON part
-    jsonString = jsonString.substring(firstBrace, endBrace + 1)
-    
-    console.log('📝 Extracted JSON string:', jsonString.substring(0, 200) + '...')
-    
-    // Parse the JSON
-    return JSON.parse(jsonString.trim())
-  } catch (error) {
-    console.error('❌ Failed to parse JSON from markdown:', error)
-    console.log('📝 Raw content:', content)
-    
-    // Try to find and extract just the JSON part with regex
-    try {
-      const jsonMatch = content.match(/\{[\s\S]*?\}/)
-      if (jsonMatch) {
-        console.log('🔄 Trying to extract JSON with regex...')
-        return JSON.parse(jsonMatch[0])
-      }
-    } catch (regexError) {
-      console.error('❌ Regex extraction also failed:', regexError)
-    }
-    
-    throw new Error(`Failed to parse JSON response: ${error}`)
-  }
-} 
+export const aiService = new AIService()
+export default aiService 
